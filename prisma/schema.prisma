@@ -1,0 +1,338 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// In prisma/schema.prisma, update the datasource:
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// User roles enum
+enum UserRole {
+  SUPER_ADMIN
+  RESTAURANT_OWNER
+  MANAGER
+  BRANCH_MANAGER
+  CHEF
+  WAITER
+  STAFF
+}
+
+// Order types enum
+enum OrderType {
+  DINE_IN
+  TAKEAWAY
+  DELIVERY
+}
+
+// Order status enum
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PREPARING
+  READY
+  DELIVERED
+  CANCELLED
+}
+
+// Payment status enum
+enum PaymentStatus {
+  PENDING
+  PAID
+  REFUNDED
+  FAILED
+}
+
+// User model with role-based access
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  password  String
+  role      UserRole @default(STAFF)
+  phone     String?
+  avatar    String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  restaurantOwnership Restaurant?       @relation("RestaurantOwner")
+  branchManagements   Branch[]         @relation("BranchManager")
+  orders              Order[]          @relation("CustomerOrders")
+  orderItems          OrderItem[]
+  
+  @@map("users")
+}
+
+// Restaurant model
+model Restaurant {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  logo        String?
+  coverImage  String?
+  address     String?
+  phone       String?
+  email       String?
+  website     String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  ownerId String   @unique
+  owner   User   @relation("RestaurantOwner", fields: [ownerId], references: [id])
+  
+  branches    Branch[]
+  menus       Menu[]
+  settings    RestaurantSetting[]
+  categories  Category[]
+  addons      RestaurantAddon[]
+  
+  @@map("restaurants")
+}
+
+// Branch model
+model Branch {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  address     String
+  phone       String?
+  email       String?
+  latitude    Float?
+  longitude   Float?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  
+  managerId String?
+  manager   User?      @relation("BranchManager", fields: [managerId], references: [id])
+  
+  tables    Table[]
+  orders    Order[]
+  menus     BranchMenu[]
+  
+  @@map("branches")
+}
+
+// Table model for QR code scanning
+model Table {
+  id        String   @id @default(cuid())
+  number    Int
+  capacity  Int
+  qrCode    String   @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  branchId String
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  
+  orders   Order[]
+  
+  @@unique([branchId, number])
+  @@map("tables")
+}
+
+// Menu category
+model Category {
+  id        String   @id @default(cuid())
+  name      String
+  description String?
+  image     String?
+  sortOrder Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  
+  menuItems MenuItem[]
+  
+  @@unique([restaurantId, name])
+  @@map("categories")
+}
+
+// Menu item
+model MenuItem {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  price       Float
+  image       String?
+  vegetarian  Boolean  @default(false)
+  available   Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  
+  menus      Menu[]
+  orderItems OrderItem[]
+  
+  @@map("menu_items")
+}
+
+// Menu template
+model Menu {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  
+  menuItems    MenuItem[]
+  branchMenus  BranchMenu[]
+  
+  @@unique([restaurantId, name])
+  @@map("menus")
+}
+
+// Branch menu (links menu to branch with availability)
+model BranchMenu {
+  id        String   @id @default(cuid())
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  branchId String
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  
+  menuId String
+  menu   Menu @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  
+  @@unique([branchId, menuId])
+  @@map("branch_menus")
+}
+
+// Order model
+model Order {
+  id            String        @id @default(cuid())
+  orderNumber   String        @unique
+  type          OrderType
+  status        OrderStatus   @default(PENDING)
+  paymentStatus PaymentStatus @default(PENDING)
+  subtotal      Float
+  tax           Float         @default(0)
+  deliveryFee   Float         @default(0)
+  total         Float
+  notes         String?
+  customerName  String?
+  customerPhone String?
+  customerEmail String?
+  deliveryAddress String?
+  estimatedTime Int?          // in minutes
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // Relations
+  branchId String
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  
+  tableId String?
+  table   Table?  @relation(fields: [tableId], references: [id])
+  
+  customerId String?
+  customer   User?   @relation("CustomerOrders", fields: [customerId], references: [id])
+  
+  orderItems OrderItem[]
+  
+  @@map("orders")
+}
+
+// Order item
+model OrderItem {
+  id        String   @id @default(cuid())
+  quantity  Int
+  price     Float
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  
+  menuItemId String
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  
+  preparedById String?
+  preparedBy   User?   @relation(fields: [preparedById], references: [id])
+  
+  @@map("order_items")
+}
+
+// Restaurant settings
+model RestaurantSetting {
+  id        String   @id @default(cuid())
+  key       String
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  
+  @@unique([restaurantId, key])
+  @@map("restaurant_settings")
+}
+
+// Add-on system
+model Addon {
+  id          String   @id @default(cuid())
+  name        String
+  version     String
+  description String?
+  type        String   // 'feature', 'theme', 'integration'
+  active      Boolean  @default(false)
+  config      String?  // JSON configuration
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  restaurantAddons RestaurantAddon[]
+  
+  @@map("addons")
+}
+
+// Restaurant add-on activation
+model RestaurantAddon {
+  id        String   @id @default(cuid())
+  active    Boolean  @default(true)
+  config    String?  // JSON configuration overrides
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  
+  addonId String
+  addon   Addon @relation(fields: [addonId], references: [id], onDelete: Cascade)
+  
+  @@unique([restaurantId, addonId])
+  @@map("restaurant_addons")
+}
